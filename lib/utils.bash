@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -o errexit -o nounset -o pipefail
 
-# TODO: Ensure this is the correct GitHub homepage where releases can be downloaded for gotestsum.
 GH_REPO="https://github.com/gotestyourself/gotestsum"
 TOOL_NAME="gotestsum"
-TOOL_TEST="--version"
+TOOL_TEST="${TOOL_NAME} --version"
 
 fail() {
   echo -e "asdf-$TOOL_NAME: $*"
@@ -14,7 +13,6 @@ fail() {
 
 curl_opts=(-fsSL)
 
-# NOTE: You might want to remove this if gotestsum is not hosted on GitHub releases.
 if [ -n "${GITHUB_API_TOKEN:-}" ]; then
   curl_opts=("${curl_opts[@]}" -H "Authorization: token $GITHUB_API_TOKEN")
 fi
@@ -27,22 +25,24 @@ sort_versions() {
 list_github_tags() {
   git ls-remote --tags --refs "$GH_REPO" |
     grep -o 'refs/tags/.*' | cut -d/ -f3- |
-    sed 's/^v//' # NOTE: You might want to adapt this sed to remove non-version strings from tags
+    sed 's/^v//'
 }
 
 list_all_versions() {
-  # TODO: Adapt this. By default we simply list the tag names from GitHub releases.
-  # Change this function if gotestsum has other means of determining installable versions.
   list_github_tags
 }
 
 download_release() {
-  local version filename url
+  local version filename
   version="$1"
   filename="$2"
 
-  # TODO: Adapt the release URL convention for gotestsum
-  url="$GH_REPO/archive/v${version}.tar.gz"
+  local platform arch archive_name url
+  platform="$(get_platform)"
+  arch="$(get_arch)"
+
+  archive_name="$(get_filename "${version}" "${platform}" "${arch}")"
+  url="$GH_REPO/releases/download/v${version}/${archive_name}"
 
   echo "* Downloading $TOOL_NAME release $version..."
   curl "${curl_opts[@]}" -o "$filename" -C - "$url" || fail "Could not download $url"
@@ -71,4 +71,34 @@ install_version() {
     rm -rf "$install_path"
     fail "An error occurred while installing $TOOL_NAME $version."
   )
+}
+
+get_platform() {
+  uname | tr '[:upper:]' '[:lower:]'
+}
+
+get_arch() {
+  local arch=""
+
+  case "$(uname -m)" in
+  x86_64 | amd64) arch="amd64" ;;
+  armv6l) arch="armv6" ;;
+  aarch64 | arm64) arch="arm64" ;;
+  ppc64le) arch="ppc64le" ;;
+  s390x) arch="s390x" ;;
+  *)
+    echo "Arch '$(uname -m)' not supported!" >&2
+    exit 1
+    ;;
+  esac
+
+  echo -n $arch
+}
+
+get_filename() {
+  local -r version="$1"
+  local -r platform="$2"
+  local -r arch="$3"
+
+  echo "${TOOL_NAME}_${version}_${platform}_${arch}.tar.gz"
 }
