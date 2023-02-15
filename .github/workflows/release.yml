@@ -12,3 +12,4 @@ jobs:
       - uses: GoogleCloudPlatform/release-please-action@v2
         with:
           release-type: simple
+          token: ${{secrets.ACCESS_TOKEN}}
